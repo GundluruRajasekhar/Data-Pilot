@@ -1,0 +1,47 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>DataPilot on Snowflake CoCo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#f5f9fc;--card:#fff;--tx:#12263a;--mu:#5b6f82;--ac:#0b7fc7;--bd:#d6e3ee;--ok:#1a8f5a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1722;--card:#15232f;--tx:#e6eef5;--mu:#93a7b8;--ac:#4cb6f0;--bd:#26394a;--ok:#4cd08f}}
+:root[data-theme="dark"]{--bg:#0d1722;--card:#15232f;--tx:#e6eef5;--mu:#93a7b8;--ac:#4cb6f0;--bd:#26394a;--ok:#4cd08f}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:860px;margin:0 auto;padding:20px 16px}
+h1{font-size:24px;margin:0}p.s{color:var(--mu);margin:4px 0 16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px}
+.steps{display:flex;gap:8px;flex-wrap:wrap}.st{flex:1;min-width:150px;border:1px solid var(--bd);border-radius:10px;padding:10px;color:var(--mu)}
+.st.on{border-color:var(--ac);color:var(--tx)}.st b{display:block;color:var(--ac)}
+button.c{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:20px;padding:8px 14px;margin:0 6px 6px 0;cursor:pointer;font:inherit}
+button.c:hover{border-color:var(--ac)}
+pre{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px;overflow-x:auto;margin:6px 0;font-size:13px}
+.w{overflow-x:auto}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.ok{color:var(--ok)}.tag{font-size:12px;color:var(--mu);text-transform:uppercase;letter-spacing:.05em}
+.act{background:var(--ac);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit}
+</style></head><body><main>
+<h1>DataPilot</h1><p class="s">Governed, conversational data work on Snowflake, built with CoCo (Cortex Code) and CoWork. Demo uses sample data.</p>
+<div class="card"><div class="steps" id="steps">
+<div class="st"><b>1. Prep</b>CoCo builds pipeline + dynamic table</div>
+<div class="st"><b>2. Govern</b>Roles, masking, lineage checked</div>
+<div class="st"><b>3. Serve</b>Cortex Analyst answers, CoWork acts</div></div></div>
+<div class="card"><div class="tag">Ask DataPilot</div><div style="margin-top:8px">
+<button class="c" data-i="0">Why did EMEA revenue drop last month?</button>
+<button class="c" data-i="1">Build a churn-risk model for top accounts</button>
+<button class="c" data-i="2">Show customer emails for at-risk accounts</button></div></div>
+<div id="out" class="card" style="display:none"></div>
+<script>
+const S=[{q:"Why did EMEA revenue drop last month?",sql:"SELECT region, SUM(amount) rev\nFROM SALES.CURATED.ORDERS_DT\nWHERE order_date >= DATEADD(month,-2,CURRENT_DATE)\nGROUP BY region, DATE_TRUNC('month',order_date);",
+cols:["Region","Prev month","Last month","Change"],rows:[["EMEA","$4.2M","$3.5M","-16%"],["AMER","$6.1M","$6.3M","+3%"],["APAC","$2.9M","$3.0M","+4%"]],
+g:["Role ANALYST: read-only on CURATED","No PII columns touched","Lineage: RAW.ORDERS to ORDERS_DT"],a:"Create CoWork task: review EMEA pipeline with regional lead",n:"Drop concentrated in two enterprise renewals slipping to next quarter."},
+{q:"Build a churn-risk model",sql:"CREATE SNOWFLAKE.ML.CLASSIFICATION churn_model(\n INPUT_DATA => SYSTEM$REFERENCE('VIEW','ML.FEATURES.ACCT_V'),\n TARGET_COLNAME => 'CHURNED');\nCALL churn_model!PREDICT(INPUT_DATA => ...);",
+cols:["Account","Risk score","Top driver"],rows:[["Acme Corp","0.87","Support tickets up"],["Globex","0.74","Seat usage down"],["Initech","0.68","No exec contact"]],
+g:["Training data limited to ML.FEATURES schema","Model registered with owner + version","Predictions written to governed table"],a:"Create CoWork task: assign CSM outreach to top 3 accounts",n:"Model trained on 18 months of history; sample metrics shown for demo."},
+{q:"Show customer emails for at-risk accounts",sql:"SELECT account, email\nFROM CRM.CURATED.CONTACTS\nWHERE account IN (SELECT account FROM ML.OUT.AT_RISK);",
+cols:["Account","Email (masked)"],rows:[["Acme Corp","a***@acme.com"],["Globex","j***@globex.com"],["Initech","m***@initech.com"]],
+g:["Masking policy EMAIL_MASK applied for role ANALYST","Access attempt written to audit log","Unmasked view needs CSM_LEAD role"],a:"Request elevated access via CoWork approval",n:"Governance in action: same query, safe output."}];
+const o=document.getElementById('out'),st=[...document.querySelectorAll('.st')];
+function run(i){const s=S[i];o.style.display='block';st.forEach(e=>e.classList.remove('on'));let k=0;
+o.innerHTML='<div class="tag">Question</div><p>'+s.q+'</p><div class="tag">CoCo generated SQL</div><pre>'+s.sql+'</pre>';
+const t=setInterval(()=>{st.forEach((e,j)=>e.classList.toggle('on',j===k));if(k===1)o.innerHTML+='<div class="tag">Governance checks</div>'+s.g.map(x=>'<div class="ok">&#10003; '+x+'</div>').join('');
+if(k===2){o.innerHTML+='<div class="tag" style="margin-top:10px">Result</div><div class="w"><table><tr>'+s.cols.map(c=>'<th>'+c+'</th>').join('')+'</tr>'+s.rows.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</table></div><p>'+s.n+'</p><button class="act" onclick="this.textContent=\'Done (demo)\'">'+s.a+'</button>';clearInterval(t)}k++},600)}
+document.querySelectorAll('button.c').forEach(b=>b.onclick=()=>run(+b.dataset.i));
+</script></main></body></html>
